@@ -4,7 +4,7 @@ from matplotlib.widgets import Button
 import numpy
 import glob
 import sys
-from scipy.stats.stats import pearsonr
+#from scipy.stats.stats import pearsonr
 #import scipy
 
 def main():
@@ -36,7 +36,7 @@ def main():
         scopes.append( Scope(file_name) ) 
 
     #start event viewer
-    #Event_Viewer(scopes) 
+    Event_Viewer(scopes, run, scope_names, test_prefix, attr_list) 
 
     #start time stamp viewer
     #Time_Stamp_Viewer(scopes)
@@ -228,7 +228,10 @@ class Wave:
 # and update them with information from my data classes
 
 class Event_Viewer:
-    def __init__(self, scopes):
+    def __init__(self, scopes, run, scope_names, test_prefix, attr_list):
+        self.attr_list = attr_list
+        self.scopes = scopes
+        self.scope_names = scope_names
         self.event_ind = 0
         self.toggle_volts = False
         self.toggle_offset = False
@@ -248,7 +251,7 @@ class Event_Viewer:
         super_title += 'Run ' + str(run)
         mp.suptitle(super_title, fontsize = 24)
 
-        for scope in scopes:
+        for scope in self.scopes:
             if scope.num_events > self.max_events:
                 self.max_events = scope.num_events
 
@@ -341,7 +344,7 @@ class Event_Viewer:
 
     def update(self):
         scope_num = 0
-        for scope in scopes:
+        for scope in self.scopes:
             max_volts = -1
             min_volts = 1
 
@@ -352,7 +355,7 @@ class Event_Viewer:
             if self.event_ind < scope.num_events:
 
                 # each wave in the current scope, current event
-                for wave_ind in range ( len (scopes[scope_num].events[self.event_ind].waves) ):
+                for wave_ind in range ( len (self.scopes[scope_num].events[self.event_ind].waves) ):
                     y = []
                     if self.toggle_volts == True:
                         if self.toggle_offset == True:
@@ -411,13 +414,13 @@ class Event_Viewer:
 
                 y_lims = [ min_volts, max_volts ]
                 self.figs[scope_num].set_ylim( y_lims )
-                self.figs[scope_num].set_title(scope_names[scope_num] + ' Waveforms - Event ' + str(self.event_ind) + ': ' + scope.events[self.event_ind].time_stamp)
+                self.figs[scope_num].set_title(self.scope_names[scope_num] + ' Waveforms - Event ' + str(self.event_ind) + ': ' + scope.events[self.event_ind].time_stamp)
 
-                self.figs3[scope_num].set_title(scope_names[scope_num] + ' Header Info - Event ' + str(self.event_ind) + ': ' + scope.events[self.event_ind].time_stamp)
+                self.figs3[scope_num].set_title(self.scope_names[scope_num] + ' Header Info - Event ' + str(self.event_ind) + ': ' + scope.events[self.event_ind].time_stamp)
                 for wave in scope.events[self.event_ind].waves:
                     y_coord = 0.875 - ((wave.channel - 1) * 0.25)
                     wave_info = 'Channel ' + str(wave.channel) + ': '
-                    for attr in attr_list:
+                    for attr in self.attr_list:
                         wave_info += attr + ' ' + wave.get_raw_attribute(attr) + ', '
                     self.figs3[scope_num].text(0.05, y_coord, wave_info, fontsize=12)
             
@@ -428,7 +431,7 @@ class Event_Viewer:
 
 
 class Time_Stamp_Viewer:
-    def __init__(self, scopes):
+    def __init__(self, scopes, run, scope_names):
         self.scopes = scopes
         self.scope_event_times = []
         self.num_events = []
