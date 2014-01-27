@@ -29,7 +29,6 @@ def main():
         file_names.append(glob.glob(file_name)[-1])
     #    print file_name
 
-
     #contruct data objects for scopes from files
     scopes = []
     for file_name in file_names:
@@ -39,7 +38,8 @@ def main():
     #Event_Viewer(scopes, run, scope_names, test_prefix, attr_list) 
 
     #start time stamp viewer
-    #Time_Stamp_Viewer(scopes)
+    #t = Time_Stamp_Viewer(scopes, run, scope_names, test_prefix)
+    #t.plot_time_stamps()
 
     #start peak correlator
     p = Peak_Correlator(scopes, run, test_prefix)
@@ -434,6 +434,7 @@ class Time_Stamp_Viewer:
     def __init__(self, scopes, run, scope_names, test_prefix):
         self.run = run
         self.test_prefix = test_prefix
+        self.scope_names = scope_names
         self.scopes = scopes
         self.scope_event_times = []
         self.num_events = []
@@ -482,24 +483,24 @@ class Time_Stamp_Viewer:
         mp.suptitle(super_title, fontsize = 24)
         
         mp.subplot(3,1,1)        
-        xlabel('Event number in run ' + str(run))
+        xlabel('Event number in run ' + str(self.run))
         ylabel('Time since scope start time (s)')
         for i in range( len(self.scopes) ):
-            plot(range(self.num_events[i]),self.scope_event_times[i], label = scope_names[i], marker='o')
+            plot(range(self.num_events[i]),self.scope_event_times[i], label = self.scope_names[i], marker='o')
         legend()
 
         mp.subplot(3,1,2)
-        xlabel('Event number in run ' + str(run))
+        xlabel('Event number in run ' + str(self.run))
         ylabel('dt between scope events (s)')
         for scope_ind in range(len(self.scopes)):
-            plot(range(len(self.dts[scope_ind])) , self.dts[scope_ind], label = scope_names[scope_ind], marker='o')
+            plot(range(len(self.dts[scope_ind])) , self.dts[scope_ind], label = self.scope_names[scope_ind], marker='o')
         legend()
 
         mp.subplot(3,1,3)
-        xlabel('Event number in run ' + str(run))
+        xlabel('Event number in run ' + str(self.run))
         ylabel('dt relative to TDS694 (s)')
         for scope_ind in range(len(self.scopes)):
-            plot(range(len(self.dts2[scope_ind])) , self.dts2[scope_ind], label = scope_names[scope_ind], marker='o')
+            plot(range(len(self.dts2[scope_ind])) , self.dts2[scope_ind], label = self.scope_names[scope_ind], marker='o')
         legend()
 
 
@@ -566,12 +567,12 @@ class Peak_Correlator:
         print pearsonr(self.sband[0:l], self.v1[0:l], label = 'v1', color='blue')
         print pearsonr(self.sband[0:l], self.h1[0:l], label = 'h1', color='red')
         print pearsonr(self.sband[0:l], self.v4[0:l], label = 'v4', color='green')
-        print pearsonr(self.sband[0:l], self.h4[0:l], label = 'h4', color='magenta')
+        print pearsonr(self.sband[0:l], self.h4[0:l], label = 'h4', color='black')
 
         print pearsonr(self.sband[0:l], self.h2[0:l], label = 'h2', color='blue')
         print pearsonr(self.sband[0:l], self.v2[0:l], label = 'v2', color='red')
         print pearsonr(self.sband[0:l], self.h3[0:l], label = 'h3', color='green')
-        print pearsonr(self.sband[0:l], self.v3[0:l], label = 'v3', color='magenta')
+        print pearsonr(self.sband[0:l], self.v3[0:l], label = 'v3', color='black')
 
     def draw_sband_plots(self):
                         
@@ -581,7 +582,7 @@ class Peak_Correlator:
         ax1.scatter(self.v1[0:l], self.v1[0:l], label = 'v1-v2', color='blue')
         ax1.scatter(self.v1[0:l], self.v2[0:l], label = 'v1-v3', color='red')
         ax1.scatter(self.v1[0:l], self.v3[0:l], label = 'v1-v4', color='green')
-        ax1.scatter(self.v2[0:l], self.v3[0:l], label = 'v2-v3', color='magenta')
+        ax1.scatter(self.v2[0:l], self.v3[0:l], label = 'v2-v3', color='black')
         ax1.scatter(self.v2[0:l], self.v4[0:l], label = 'v2-v4', color='cyan')
         ax1.scatter(self.v3[0:l], self.v4[0:l], label = 'v3-v4', color='yellow')
         ax1.set_ylim([0, 128])
@@ -597,7 +598,7 @@ class Peak_Correlator:
         ax2.scatter(self.h1[0:l], self.h1[0:l], label = 'h1-h2', color='blue')
         ax2.scatter(self.h1[0:l], self.h2[0:l], label = 'h1-h3', color='red')
         ax2.scatter(self.h1[0:l], self.h3[0:l], label = 'h1-h4', color='green')
-        ax2.scatter(self.h2[0:l], self.h3[0:l], label = 'h2-h3', color='magenta')
+        ax2.scatter(self.h2[0:l], self.h3[0:l], label = 'h2-h3', color='black')
         ax2.scatter(self.h2[0:l], self.h4[0:l], label = 'h2-h4', color='cyan')
         ax2.scatter(self.h3[0:l], self.h4[0:l], label = 'h3-h4', color='yellow')
         ax2.set_ylim([0, 128])
@@ -619,7 +620,7 @@ class Peak_Correlator:
         ax1.scatter(self.sband[0:l], self.v1[0:l], label = 'v1', color='blue')
         ax1.scatter(self.sband[0:l], self.h1[0:l], label = 'h1', color='red')
         ax1.scatter(self.sband[0:l], self.v4[0:l], label = 'v4', color='green')
-        ax1.scatter(self.sband[0:l], self.h4[0:l], label = 'h4', color='magenta')
+        ax1.scatter(self.sband[0:l], self.h4[0:l], label = 'h4', color='black')
         ax1.set_ylim([0, 128])
         ax1.set_xlim([0, 128])
         title('Scope MSOA')
@@ -632,10 +633,10 @@ class Peak_Correlator:
         ax2.scatter(self.sband[0:l], self.h2[0:l], label = 'h2', color='blue')
         ax2.scatter(self.sband[0:l], self.v2[0:l], label = 'v2', color='red')
         ax2.scatter(self.sband[0:l], self.h3[0:l], label = 'h3', color='green')
-        ax2.scatter(self.sband[0:l], self.v3[0:l], label = 'v3', color='magenta')
+        ax2.scatter(self.sband[0:l], self.v3[0:l], label = 'v3', color='black')
         ax2.set_ylim([0, 128])
         ax2.set_xlim([0, 128])
-        title('Scope MSOAB')
+        title('Scope MSOB')
         xlabel('S-band (ADC counts)')
         ylabel('Seavey channels (ADC counts)')
         legend()
