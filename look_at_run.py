@@ -36,13 +36,13 @@ def main():
         scopes.append( Scope(file_name) ) 
 
     #start event viewer
-    Event_Viewer(scopes, run, scope_names, test_prefix, attr_list) 
+    #Event_Viewer(scopes, run, scope_names, test_prefix, attr_list) 
 
     #start time stamp viewer
     #Time_Stamp_Viewer(scopes)
 
     #start peak correlator
-    p = Peak_Correlator(scopes)
+    p = Peak_Correlator(scopes, run, test_prefix)
     p.draw_self_plots()
     #p.correlate()
 
@@ -431,7 +431,9 @@ class Event_Viewer:
 
 
 class Time_Stamp_Viewer:
-    def __init__(self, scopes, run, scope_names):
+    def __init__(self, scopes, run, scope_names, test_prefix):
+        self.run = run
+        self.test_prefix = test_prefix
         self.scopes = scopes
         self.scope_event_times = []
         self.num_events = []
@@ -473,7 +475,13 @@ class Time_Stamp_Viewer:
 
     def plot_time_stamps(self):
 
-        mp.subplot(3,1,1)
+        super_title = ''
+        if len(self.test_prefix) > 0:
+            super_title = 'Test '
+        super_title += 'Run ' + str(self.run)
+        mp.suptitle(super_title, fontsize = 24)
+        
+        mp.subplot(3,1,1)        
         xlabel('Event number in run ' + str(run))
         ylabel('Time since scope start time (s)')
         for i in range( len(self.scopes) ):
@@ -497,7 +505,9 @@ class Time_Stamp_Viewer:
 
 
 class Peak_Correlator:
-    def __init__(self, scopes): #get peak for all events in scopes
+    def __init__(self, scopes, run, test_prefix): #get peak for all events in scopes
+        self.run = run
+        self.test_prefix = test_prefix
         self.v1 = []
         self.v2 = []
         self.v3 = []
@@ -599,6 +609,11 @@ class Peak_Correlator:
 
     def draw_self_plots(self):
         fig = mp.figure()
+        super_title = ''
+        if len(self.test_prefix) > 0:
+            super_title = 'Test '
+        super_title += 'Run ' + str(self.run)
+        mp.suptitle(super_title, fontsize = 24)
         ax1 = fig.add_subplot(2,1,1)
         l = min([len(self.sband), len(self.v1)])
         ax1.scatter(self.sband[0:l], self.v1[0:l], label = 'v1', color='blue')
