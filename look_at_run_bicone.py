@@ -19,11 +19,11 @@ def main():
 
     scope_names = []
     scope_names.append('694')
-    scope_names.append('MSOA')
+    #scope_names.append('MSOA')
     scope_names.append('MSOB')
 
     file_names = []
-    for i in range(3):
+    for i in range(len(scope_names)):
         file_name = dirc
         file_name += test_prefix + 'run_' + str(run) + '_scope_' + scope_names[i] + '*.lvm'
         file_names.append(glob.glob(file_name)[-1])
@@ -38,12 +38,14 @@ def main():
     Event_Viewer(scopes, run, scope_names, test_prefix, attr_list) 
 
     #start time stamp viewer
-    #t = Time_Stamp_Viewer(scopes, run, scope_names, test_prefix)
-    #t.plot_time_stamps()
+    t = Time_Stamp_Viewer(scopes, run, scope_names, test_prefix)
+    t.plot_time_stamps()
 
     #start peak correlator
     p = Peak_Correlator(scopes, run, test_prefix)
-    p.draw_self_plots()
+    p.draw_694_plots()
+    p.draw_max_adc_plots_bicone()
+    #p.draw_max_adc_plots()
     #p.correlate()
 
     MSOAs = []
@@ -79,8 +81,6 @@ def main():
             del scope_MSOB
             del scope_TDS694
             del event_times
-
-
 
     show()
 
@@ -134,7 +134,7 @@ class Event:
             #print raw_wave
             self.num_waves += 1
             self.waves.append( Wave(raw_wave, self.num_waves) )
-        
+
         #that 694 bastard requires special attention
         if self.waves[-1].num_samples == 20000 or self.waves[-1].num_samples == 40000 :
             temp_samples_off = self.waves[-1].samples_off
@@ -230,6 +230,7 @@ class Wave:
 class Event_Viewer:
     def __init__(self, scopes, run, scope_names, test_prefix, attr_list):
         self.attr_list = attr_list
+        self.num_scopes = len(scopes)
         self.scopes = scopes
         self.scope_names = scope_names
         self.event_ind = 0
@@ -255,7 +256,7 @@ class Event_Viewer:
             if scope.num_events > self.max_events:
                 self.max_events = scope.num_events
 
-            fig = mp.subplot(3, 2, 2*scope_num + 1)
+            fig = mp.subplot(self.num_scopes, 2, 2*scope_num + 1)
             self.figs.append(fig)
             xlabel('Time (s)')
             ylabel('ADC count')
@@ -276,7 +277,7 @@ class Event_Viewer:
                 self.lines.append(line)
             legend()
 
-            fig3 = mp.subplot(3, 2, 2*scope_num + 2)
+            fig3 = mp.subplot(self.num_scopes, 2, 2*scope_num + 2)
             self.figs3.append(fig3)
             axis('off')
 
@@ -323,8 +324,8 @@ class Event_Viewer:
 
     def volts_toggle(self, event):
         self.toggle_volts = not self.toggle_volts
-        for scope_num in range(3):
-            mp.subplot(3, 2, 2*scope_num + 1)
+        for scope_num in range(self.num_scopes):
+            mp.subplot(self.num_scopes, 2, 2*scope_num + 1)
             if self.toggle_volts == False:
                 ylabel('ADC count')
             else:
@@ -508,6 +509,7 @@ class Time_Stamp_Viewer:
 class Peak_Correlator:
     def __init__(self, scopes, run, test_prefix): #get peak for all events in scopes
         self.run = run
+        self.num_scopes = len(scopes)
         self.test_prefix = test_prefix
         self.v1 = []
         self.v2 = []
@@ -517,9 +519,9 @@ class Peak_Correlator:
         self.h2 = []
         self.h3 = []
         self.h4 = []
-        self.scintillator = []
+        self.vhf_bottom = []
         self.monitor = []
-        self.vhf = []
+        self.vhf_top = []
         self.sband = []
 
         for scope_ind in range(len(scopes)):
@@ -536,12 +538,13 @@ class Peak_Correlator:
 
                     #here we go... check google doc for header layout
                     #https://docs.google.com/spreadsheet/ccc?key=0Am4F6sc-E5YzdGhuQ1lKX2lEaU1uUTRxa21RV2J6ZVE&usp=sharing#gid=0
+                    #print str(scope_ind) + ' ' + str(self.num_scopes)
                     if scope_ind == 0 and wave_ind == 0:
-                        self.scintillator.append(max_val)
+                        self.vhf_bottom.append(max_val)
                     elif scope_ind == 0 and wave_ind == 1:
                         self.monitor.append(max_val)
                     elif scope_ind == 0 and wave_ind == 2:
-                        self.vhf.append(max_val)
+                        self.vhf_top.append(max_val)
                     elif scope_ind == 0 and wave_ind == 3:
                         self.sband.append(max_val)
                     elif scope_ind == 1 and wave_ind == 0:
@@ -574,8 +577,20 @@ class Peak_Correlator:
         print pearsonr(self.sband[0:l], self.h3[0:l], label = 'h3', color='green')
         print pearsonr(self.sband[0:l], self.v3[0:l], label = 'v3', color='black')
 
-    def draw_sband_plots(self):
-                        
+    def draw_694_plots(self):
+
+        fig = mp.figure()
+        ax1 = fig.add_subplot(1,1,1)
+        l = len(self.sband)
+        ax1.scatter(self.sband[0:l], self.monitor[0:l], label = 'monitor', color='blue')
+        ax1.scatter(self.sband[0:l], self.vhf_bottom[0:l], label = 'vhf_bottom', color='red')
+        ax1.scatter(self.sband[0:l], self.vhf_top[0:l], label = 'vhf_top', color='green')
+        ax1.set_ylim([0, 128])
+        ax1.set_xlim([0, 128])
+        legend()
+
+    def draw_self_plots(self):
+
         fig = mp.figure()
         ax1 = fig.add_subplot(2,1,1)
         l = min([len(self.v1), len(self.v2)])
@@ -608,14 +623,59 @@ class Peak_Correlator:
         ylabel('Seavey channels (ADC counts)')
         legend()
 
-    def draw_self_plots(self):
+    def draw_max_adc_plots_bicone(self):
         fig = mp.figure()
         super_title = ''
         if len(self.test_prefix) > 0:
             super_title = 'Test '
         super_title += 'Run ' + str(self.run)
         mp.suptitle(super_title, fontsize = 24)
-        ax1 = fig.add_subplot(2,1,1)
+        if self.num_scopes > 0:
+            ax1 = fig.add_subplot(self.num_scopes,1,1)
+            e = range( len( self.vhf_bottom) )
+            ax1.scatter(e, self.vhf_bottom, label = 'vhf_bottom', color='blue')
+            ax1.scatter(e, self.monitor, label = 'monitor', color='red')
+            ax1.scatter(e, self.vhf_top, label = 'vhf_top', color='green')
+            ax1.scatter(e, self.sband, label = 'sband', color='black')
+            ax1.set_ylim([0, 128])
+            title('Scope 694')
+            xlabel('Event')
+            ylabel('ADC counts')
+            legend()
+        if self.num_scopes > 1 :
+            ax2 = fig.add_subplot(self.num_scopes,1,2)
+            e = range( len( self.v1) )
+            #print e
+            #print self.v1
+            ax2.scatter(e, self.v1, label = 'alfa', color='blue')
+            #ax2.scatter(e, self.h1, label = 'h1', color='red')
+            #ax2.scatter(e, self.v2, label = 'v4', color='green')
+            #ax2.scatter(e, self.h2, label = 'h4', color='black')
+            ax2.set_ylim([0, 128])
+            title('Scope MSOA')
+            xlabel('Event')
+            ylabel('ADC counts')
+            legend()
+        if self.num_scopes > 2:
+            ax3 = fig.add_subplot(self.num_scopes,1,2)
+            e = range( len( self.h2) )
+            ax3.scatter(e, self.h2[0:e], label = 'v1', color='blue')
+            ax3.scatter(e, self.v2[0:e], label = 'h1', color='red')
+            ax3.scatter(e, self.h3[0:e], label = 'v4', color='green')
+            ax3.scatter(e, self.v3[0:e], label = 'h4', color='black')
+            ax3.set_ylim([0, 128])
+            title('Scope MSOB')
+            xlabel('Event')
+            ylabel('ADC counts')
+
+    def draw_sband_plots(self):
+        fig = mp.figure()
+        super_title = ''
+        if len(self.test_prefix) > 0:
+            super_title = 'Test '
+        super_title += 'Run ' + str(self.run)
+        mp.suptitle(super_title, fontsize = 24)
+        ax1 = fig.add_subplot(self.num_scopes-1,1,1)
         l = min([len(self.sband), len(self.v1)])
         ax1.scatter(self.sband[0:l], self.v1[0:l], label = 'v1', color='blue')
         ax1.scatter(self.sband[0:l], self.h1[0:l], label = 'h1', color='red')
@@ -628,18 +688,19 @@ class Peak_Correlator:
         ylabel('Seavey channels (ADC counts)')
         legend()
 
-        ax2 = fig.add_subplot(2,1,2)
-        l = min([len(self.sband), len(self.v2)])
-        ax2.scatter(self.sband[0:l], self.h2[0:l], label = 'h2', color='blue')
-        ax2.scatter(self.sband[0:l], self.v2[0:l], label = 'v2', color='red')
-        ax2.scatter(self.sband[0:l], self.h3[0:l], label = 'h3', color='green')
-        ax2.scatter(self.sband[0:l], self.v3[0:l], label = 'v3', color='black')
-        ax2.set_ylim([0, 128])
-        ax2.set_xlim([0, 128])
-        title('Scope MSOB')
-        xlabel('S-band (ADC counts)')
-        ylabel('Seavey channels (ADC counts)')
-        legend()
+        if self.num_scopes == 3:
+            ax2 = fig.add_subplot(self.num_scopes-1,1,2)
+            l = min([len(self.sband), len(self.v2)])
+            ax2.scatter(self.sband[0:l], self.h2[0:l], label = 'h2', color='blue')
+            ax2.scatter(self.sband[0:l], self.v2[0:l], label = 'v2', color='red')
+            ax2.scatter(self.sband[0:l], self.h3[0:l], label = 'h3', color='green')
+            ax2.scatter(self.sband[0:l], self.v3[0:l], label = 'v3', color='black')
+            ax2.set_ylim([0, 128])
+            ax2.set_xlim([0, 128])
+            title('Scope MSOB')
+            xlabel('S-band (ADC counts)')
+            ylabel('Seavey channels (ADC counts)')
+            legend()
 
 if __name__ == "__main__":
     main()
