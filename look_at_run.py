@@ -4,8 +4,7 @@ from matplotlib.widgets import Button
 import numpy
 import glob
 import sys
-#from scipy.stats.stats import pearsonr
-#import scipy
+import math
 
 def main():
     dirc='/Users/benstrutt/Dropbox/data/'
@@ -23,78 +22,46 @@ def main():
     scope_names.append('MSOB')
 
     file_names = []
-    for i in range(3):
+    for i in range(len(scope_names)):
         file_name = dirc
         file_name += test_prefix + 'run_' + str(run) + '_scope_' + scope_names[i] + '*.lvm'
+        # If there are muliple files with the same run name, this selects the most recent one.
+        # (The time the data was taken appears in the file name, so the most recent one will be last).
         file_names.append(glob.glob(file_name)[-1])
-    #    print file_name
 
-    #contruct data objects for scopes from files
+    # Create my data objects from the specified file names.
     scopes = []
     for file_name in file_names:
         scopes.append( Scope(file_name) ) 
 
-    #start event viewer
+    # Start event viewer.
     Event_Viewer(scopes, run, scope_names, test_prefix, attr_list) 
 
-    #start time stamp viewer
-    #t = Time_Stamp_Viewer(scopes, run, scope_names, test_prefix)
-    #t.plot_time_stamps()
+    # Start time stamp viewer
+    t = Time_Stamp_Viewer(scopes, run, scope_names, test_prefix)
+    t.plot_time_stamps()
 
-    #start peak correlator
+    # Start peak correlator
     p = Peak_Correlator(scopes, run, test_prefix)
-    p.draw_self_plots()
-    #p.correlate()
-
-    MSOAs = []
-    MSOBs = []
-    TDS694s = []
-    scope_MSOAs = []
-    scope_MSOBs = []
-    scope_TDS694s = []
-
-    if 0:
-        for run in range(33, 48+1):
-            TDS694s = glob.glob(dirc + 'run_' + str(run) + '_scope_694*.lvm')
-            MSOAs = glob.glob(dirc + 'run_' + str(run) + '_scope_MSOA*.lvm')
-            MSOBs = glob.glob(dirc + 'run_' + str(run) + '_scope_MSOB*.lvm')
-
-            scope_MSOA = None
-            scope_MSOB = None
-            scope_TDS694 = None
-
-            for file_name in TDS694s:
-                print file_name
-                scope_TDS694 = Scope(file_name)
-            for file_name in MSOAs:
-                print file_name
-                scope_MSOA = Scope(file_name)
-            for file_name in MSOBs:
-                print file_name
-                scope_MSOB = Scope(file_name)
-
-            event_times = Time_Stamp_Viewer([scope_TDS694, scope_MSOA, scope_MSOB])
-            event_times.plot_time_stamps()
-            del scope_MSOA
-            del scope_MSOB
-            del scope_TDS694
-            del event_times
-
-
-
+    #p.draw_694_plots()
+    p.draw_sband_plots() #max abs relative to sband
+    #p.draw_self_plots()
+    #p.draw_max_adc_plots()
     show()
 
-
 class Scope:
+    """
+    This class contains all the events in a run for a particular scope, plus other useful information.
+    """
     def __init__(self, file_name):
         self.file_names = []
         self.events = []
-        self.raw_events = [] # for raw strings
-        self.event_times = [] # time stamp string
+        self.raw_events = []
+        self.event_times = []
         self.num_events = 0
         self.get_data(file_name)
         self.event_index = 0
-        self.lines  = []#not really lines...
+        self.lines  = []
 
     def get_data(self, file_name):
         self.file_names.append(file_name)
@@ -103,7 +70,7 @@ class Scope:
                 raw_event = line
                 self.raw_events.append( raw_event )
 
-             #picks out event time in finalised header
+            # Picks out event time in finalised header
             elif line[0:3] == '//"':
                 event_time = line.split('"')[1]
                 self.event_times.append(event_time)
@@ -118,9 +85,10 @@ class Scope:
             self.events.append( Event(event_ind, raw_event, event_time) )
         print str(self.num_events) + ' found!'
 
-
-
 class Event:
+    """
+    A class which contains 4 waveforms and a timestamp
+    """
     def __init__(self, event_num, raw_event, event_time):
         self.time_stamp = event_time
         self.waves = []
@@ -134,7 +102,7 @@ class Event:
             #print raw_wave
             self.num_waves += 1
             self.waves.append( Wave(raw_wave, self.num_waves) )
-        
+
         #that 694 bastard requires special attention
         if self.waves[-1].num_samples == 20000 or self.waves[-1].num_samples == 40000 :
             temp_samples_off = self.waves[-1].samples_off
@@ -146,9 +114,12 @@ class Event:
                 wave.get_other()
                 start += incr
 
-
 class Wave:
-
+    """
+    The Wave class is initialized by being handed a "raw waveform", which is a string from the raw data.
+    The raw data string will contain many pieces of information, including the waveform.
+    This class puts all the pieces of information in some semblance of order, hopefully.
+    """
     def __init__(self, raw_wave, chan):
         self.attribute_names = []
         self.attribute_values = []
@@ -163,17 +134,16 @@ class Wave:
         self.times = []
         self.volts_off = []
 
-        # get attributes
-        attributes = raw_wave.split(';')
+        # Get attributes from the raw waveform.
+        attributes = raw_wave.split(';') # The Attributes are colon separated.
         for attribute in attributes:
-            attribute_parts = attribute.split(' ', 1)
-            if len(attribute_parts) == 2: #there may be some blank fields, this should ignore them
+            attribute_parts = attribute.split(' ', 1) # Names are separated from values by a single space.
+            if len(attribute_parts) == 2: # There may be some blank fields, this should ignore them.
                 self.attribute_names.append(attribute_parts[0])
                 self.attribute_values.append(attribute_parts[1])
                 self.attribute_count += 1
 
-        # get raw adc counts and subtract y_offset
-
+        # Get raw adc counts and subtract y_offset.
         hopefully_samples = self.get_raw_attribute('CURV')
         if hopefully_samples == None:
             pass
@@ -182,54 +152,58 @@ class Wave:
                 #self.samples_off.append(0)
         else:
             for sample in hopefully_samples.split(','):
+                # I'm not sure if this is necessary, but there are some return and newline characters. 
                 if '//\r\n' in sample:
                     sample = sample.replace('//\r\n','')
                 self.samples_off.append( float(sample) )
         self.num_samples = len(self.samples_off)
-        #print self.num_samples
 
+        # At least one scope reads out all four waveforms as a single waveform (silly labview).
+        # This if statement should stop the waveform information being grabbed for that scope.
         if len(self.samples_off) > 0 and len(self.samples_off) < 20000:
             self.get_other()
-            #get pow spec
-
 
     def get_other(self):
 
         self.num_samples = len(self.samples_off)
-        # get times
-        #x_0 = float(self.get_raw_attribute('XZE') )
-        x_0 = 0
-        x_incr = 1#float( self.get_raw_attribute('XIN') )
-        #print x_incr
+        x_0 = float(self.get_raw_attribute('XZE') ) # XZE is x0, the time of the initial sample.
+        #x_0 = 0
+        x_incr = float( self.get_raw_attribute('XIN') )
+        #x_incr = 1
         self.samp_rate = 1./x_incr
 
-        y_off = float( self.get_raw_attribute('YOF') )
+        y_off = float( self.get_raw_attribute('YOF') ) # YOF is the y-offset in volts on the scope.
         for sample in self.samples_off:
             self.samples.append( float(sample) - y_off )
 
         for index in range(self.num_samples):
-            self.times.append((x_0 + index*x_incr))
+            self.times.append((x_0 + index*x_incr)) # Populate the list of times.
 
-        #get volts
-        y_mult = float( self.get_raw_attribute('YMU') )
+        y_mult = float( self.get_raw_attribute('YMU') ) # YMU is the y-multiplier, i.e. volts/adc conversion.
+        
+        # Here we populate a list of samples, both zeroed and offset so the user can switch between them
+        # in the display.
         for samp in self.samples_off:
             self.volts.append( (samp - y_off)*y_mult )
         for samp in self.samples_off:
             self.volts_off.append( samp*y_mult)
 
-    # lookup function for raw attributes from header file
+    # This is a lookup function which means raw attributes can be picked out by their name.
     def get_raw_attribute(self, search_string):
         for attribute_index in range(self.attribute_count):
             if search_string in self.attribute_names[attribute_index]:
                 return self.attribute_values[attribute_index]
 
-# now we plot things
-# lets keep all plotting data types out here for now
-# and update them with information from my data classes
-
 class Event_Viewer:
+
+    """
+    This is the class that turns the data objects into a (hopefully) pretty display.
+    There should only be one instance of this running.
+    """
+
     def __init__(self, scopes, run, scope_names, test_prefix, attr_list):
         self.attr_list = attr_list
+        self.num_scopes = len(scopes)
         self.scopes = scopes
         self.scope_names = scope_names
         self.event_ind = 0
@@ -245,17 +219,19 @@ class Event_Viewer:
         self.lines = []
         self.lines2 = []
 
+        # Generate the display title
         super_title = ''
         if len(test_prefix) > 0:
             super_title = 'Test '
         super_title += 'Run ' + str(run)
         mp.suptitle(super_title, fontsize = 24)
 
+        # Get data frim 
         for scope in self.scopes:
             if scope.num_events > self.max_events:
                 self.max_events = scope.num_events
 
-            fig = mp.subplot(3, 2, 2*scope_num + 1)
+            fig = mp.subplot(self.num_scopes, 2, 2*scope_num + 1)
             self.figs.append(fig)
             xlabel('Time (s)')
             ylabel('ADC count')
@@ -276,7 +252,7 @@ class Event_Viewer:
                 self.lines.append(line)
             legend()
 
-            fig3 = mp.subplot(3, 2, 2*scope_num + 2)
+            fig3 = mp.subplot(self.num_scopes, 2, 2*scope_num + 2)
             self.figs3.append(fig3)
             axis('off')
 
@@ -323,8 +299,8 @@ class Event_Viewer:
 
     def volts_toggle(self, event):
         self.toggle_volts = not self.toggle_volts
-        for scope_num in range(3):
-            mp.subplot(3, 2, 2*scope_num + 1)
+        for scope_num in range(self.num_scopes):
+            mp.subplot(self.num_scopes, 2, 2*scope_num + 1)
             if self.toggle_volts == False:
                 ylabel('ADC count')
             else:
@@ -482,7 +458,7 @@ class Time_Stamp_Viewer:
         super_title += 'Run ' + str(self.run)
         mp.suptitle(super_title, fontsize = 24)
         
-        mp.subplot(3,1,1)        
+        mp.subplot(3,1,1)
         xlabel('Event number in run ' + str(self.run))
         ylabel('Time since scope start time (s)')
         for i in range( len(self.scopes) ):
@@ -508,19 +484,20 @@ class Time_Stamp_Viewer:
 class Peak_Correlator:
     def __init__(self, scopes, run, test_prefix): #get peak for all events in scopes
         self.run = run
+        self.num_scopes = len(scopes)
         self.test_prefix = test_prefix
-        self.v1 = []
-        self.v2 = []
-        self.v3 = []
-        self.v4 = []
-        self.h1 = []
-        self.h2 = []
-        self.h3 = []
-        self.h4 = []
-        self.scintillator = []
-        self.monitor = []
-        self.vhf = []
-        self.sband = []
+        self.MSOA_1 = []
+        self.MSOB_2 = []
+        self.MSOB_4 = []
+        self.MSOA_3 = []
+        self.MSOA_2 = []
+        self.MSOB_1 = []
+        self.MSOB_3 = []
+        self.MSOA_4 = []
+        self.TDS694_1 = []
+        self.TDS694_2 = []
+        self.TDS694_3 = []
+        self.TDS694_4 = []
 
         for scope_ind in range(len(scopes)):
             for event in scopes[scope_ind].events:
@@ -535,111 +512,184 @@ class Peak_Correlator:
                         max_val = a
 
                     #here we go... check google doc for header layout
-                    #https://docs.google.com/spreadsheet/ccc?key=0Am4F6sc-E5YzdGhuQ1lKX2lEaU1uUTRxa21RV2J6ZVE&usp=sharing#gid=0
+                    #https://docs.google.com/spreadsheet/ccc?key=0Am4F6sc-E5YzdGhuQ1lKX2lEaU1uUTRxa21RMSOB_2J6ZVE&usp=sharing#gid=0
+                    #print str(scope_ind) + ' ' + str(self.num_scopes)
                     if scope_ind == 0 and wave_ind == 0:
-                        self.scintillator.append(max_val)
+                        self.TDS694_1.append(max_val)
                     elif scope_ind == 0 and wave_ind == 1:
-                        self.monitor.append(max_val)
+                        self.TDS694_2.append(max_val)
                     elif scope_ind == 0 and wave_ind == 2:
-                        self.vhf.append(max_val)
+                        self.TDS694_3.append(max_val)
                     elif scope_ind == 0 and wave_ind == 3:
-                        self.sband.append(max_val)
+                        self.TDS694_4.append(max_val)
                     elif scope_ind == 1 and wave_ind == 0:
-                        self.v1.append(max_val)
+                        self.MSOA_1.append(max_val)
                     elif scope_ind == 1 and wave_ind == 1:
-                        self.h1.append(max_val)
+                        self.MSOA_2.append(max_val)
                     elif scope_ind == 1 and wave_ind == 2:
-                        self.v4.append(max_val)
+                        self.MSOA_3.append(max_val)
                     elif scope_ind == 1 and wave_ind == 3:
-                        self.h4.append(max_val)
+                        self.MSOA_4.append(max_val)
                     elif scope_ind == 2 and wave_ind == 0:
-                        self.h2.append(max_val)
+                        self.MSOB_1.append(max_val)
                     elif scope_ind == 2 and wave_ind == 1:
-                        self.v2.append(max_val)
+                        self.MSOB_2.append(max_val)
                     elif scope_ind == 2 and wave_ind == 2:
-                        self.h3.append(max_val)
+                        self.MSOB_3.append(max_val)
                     elif scope_ind == 2 and wave_ind == 3:
-                        self.v3.append(max_val)
+                        self.MSOB_4.append(max_val)
 
-    def correlate(self):
 
-        l = min([len(self.sband), len(self.v1)])
-        print pearsonr(self.sband[0:l], self.v1[0:l], label = 'v1', color='blue')
-        print pearsonr(self.sband[0:l], self.h1[0:l], label = 'h1', color='red')
-        print pearsonr(self.sband[0:l], self.v4[0:l], label = 'v4', color='green')
-        print pearsonr(self.sband[0:l], self.h4[0:l], label = 'h4', color='black')
+    def correlation(self, x, y):
+        lx = len(x)
+        ly = len(y)
+        if ly > lx:
+            dl = ly - lx
+            for i in range(dl):
+                y.append(0)
+        elif lx > ly:
+            dl = lx - ly
+            for i in range(dl):
+                x.append(0)
 
-        print pearsonr(self.sband[0:l], self.h2[0:l], label = 'h2', color='blue')
-        print pearsonr(self.sband[0:l], self.v2[0:l], label = 'v2', color='red')
-        print pearsonr(self.sband[0:l], self.h3[0:l], label = 'h3', color='green')
-        print pearsonr(self.sband[0:l], self.v3[0:l], label = 'v3', color='black')
+            
+        xmean = 0
+        xrms = 0
+        for xi in x:
+            xmean += xi
+            xrms += xi*xi
+        xmean /= len(x)
+        xrms = xrms/len(x) - xmean*xmean
+        xrms = math.sqrt(xrms)
 
-    def draw_sband_plots(self):
-                        
-        fig = mp.figure()
-        ax1 = fig.add_subplot(2,1,1)
-        l = min([len(self.v1), len(self.v2)])
-        ax1.scatter(self.v1[0:l], self.v1[0:l], label = 'v1-v2', color='blue')
-        ax1.scatter(self.v1[0:l], self.v2[0:l], label = 'v1-v3', color='red')
-        ax1.scatter(self.v1[0:l], self.v3[0:l], label = 'v1-v4', color='green')
-        ax1.scatter(self.v2[0:l], self.v3[0:l], label = 'v2-v3', color='black')
-        ax1.scatter(self.v2[0:l], self.v4[0:l], label = 'v2-v4', color='cyan')
-        ax1.scatter(self.v3[0:l], self.v4[0:l], label = 'v3-v4', color='yellow')
-        ax1.set_ylim([0, 128])
-        ax1.set_xlim([0, 128])
+        ymean = 0
+        yrms = 0
+        for yi in y:
+            ymean += yi
+            yrms += yi*yi
+        ymean /= len(y)
+        yrms = yrms/len(y) - ymean*ymean
+        yrms = math.sqrt(yrms)
+        
+        rho = 0
+        for i in range(len(x)):
+            rho += (x[i] - xmean)*(y[i] - ymean)
+        rho /= len(x)
+        rho /= (xrms*yrms)
 
-        title('VPol Channels')
-        xlabel('S-band (ADC counts)')
-        ylabel('Seavey channels (ADC counts)')
-        legend()
+        return rho
 
-        ax2 = fig.add_subplot(2,1,2)
-        l = min([len(self.h1), len(self.h2)])
-        ax2.scatter(self.h1[0:l], self.h1[0:l], label = 'h1-h2', color='blue')
-        ax2.scatter(self.h1[0:l], self.h2[0:l], label = 'h1-h3', color='red')
-        ax2.scatter(self.h1[0:l], self.h3[0:l], label = 'h1-h4', color='green')
-        ax2.scatter(self.h2[0:l], self.h3[0:l], label = 'h2-h3', color='black')
-        ax2.scatter(self.h2[0:l], self.h4[0:l], label = 'h2-h4', color='cyan')
-        ax2.scatter(self.h3[0:l], self.h4[0:l], label = 'h3-h4', color='yellow')
-        ax2.set_ylim([0, 128])
-        ax2.set_xlim([0, 128])
-        title('HPol Channels')
-        xlabel('S-band (ADC counts)')
-        ylabel('Seavey channels (ADC counts)')
-        legend()
 
-    def draw_self_plots(self):
+    def draw_max_adc_plots(self):
         fig = mp.figure()
         super_title = ''
         if len(self.test_prefix) > 0:
             super_title = 'Test '
         super_title += 'Run ' + str(self.run)
         mp.suptitle(super_title, fontsize = 24)
-        ax1 = fig.add_subplot(2,1,1)
-        l = min([len(self.sband), len(self.v1)])
-        ax1.scatter(self.sband[0:l], self.v1[0:l], label = 'v1', color='blue')
-        ax1.scatter(self.sband[0:l], self.h1[0:l], label = 'h1', color='red')
-        ax1.scatter(self.sband[0:l], self.v4[0:l], label = 'v4', color='green')
-        ax1.scatter(self.sband[0:l], self.h4[0:l], label = 'h4', color='black')
-        ax1.set_ylim([0, 128])
-        ax1.set_xlim([0, 128])
+        if self.num_scopes > 0:
+            ax1 = fig.add_subplot(self.num_scopes,1,1)
+            e = range( len( self.TDS694_1) )
+            ax1.scatter(e, self.TDS694_1, label = '694: 1', color='blue')
+            ax1.scatter(e, self.TDS694_2, label = '694: 2', color='red')
+            ax1.scatter(e, self.TDS694_3, label = '694: 3', color='green')
+            ax1.scatter(e, self.TDS694_4, label = '694: 4', color='black')
+            ax1.set_ylim([0, 128])
+            title('Scope 694')
+            xlabel('Event')
+            ylabel('ADC counts')
+            legend()
+        if self.num_scopes > 1 :
+            ax2 = fig.add_subplot(self.num_scopes,1,2)
+            e = range( len( self.MSOA_1) )
+            #print e
+            #print self.MSOA_1
+            ax2.scatter(e, self.MSOA_1, label = 'MSOA_1', color='blue')
+            ax2.scatter(e, self.MSOA_2, label = 'MSOA_2', color='red')
+            ax2.scatter(e, self.MSOB_3, label = 'MSOA_3', color='green')
+            ax2.scatter(e, self.MSOB_4, label = 'MSOA_4', color='black')
+            ax2.set_ylim([0, 128])
+            title('Scope MSOA')
+            xlabel('Event')
+            ylabel('ADC counts')
+            legend()
+        if self.num_scopes > 2:
+            ax3 = fig.add_subplot(self.num_scopes,1,3)
+            e = range( len( self.MSOB_1) )
+            ax3.scatter(e, self.MSOB_1, label = 'MSOB_1', color='blue')
+            ax3.scatter(e, self.MSOB_2, label = 'MSOB_2', color='red')
+            ax3.scatter(e, self.MSOB_3, label = 'MSOB_3', color='green')
+            ax3.scatter(e, self.MSOB_4, label = 'MSOB_4', color='black')
+            ax3.set_ylim([0, 128])
+            title('Scope MSOB')
+            xlabel('Event')
+            ylabel('ADC counts')
+            legend()
+
+        print 'TDS694_1 vs TDS694_4, rho = {0:.3f}'.format(self.correlation(self.TDS694_1, self.TDS694_4))
+        print 'TDS694_2 vs TDS694_4, rho = {0:.3f}'.format(self.correlation(self.TDS694_2, self.TDS694_4))
+        print 'TDS694_3 vs TDS694_4, rho = {0:.3f}'.format(self.correlation(self.TDS694_3, self.TDS694_4))
+        print 'TDS694_4 vs TDS694_4, rho = {0:.3f}'.format(self.correlation(self.TDS694_4, self.TDS694_4))
+        print ''
+        print 'MSOA_1 vs TDS694_4, rho = {0:.3f}'.format(self.correlation(self.MSOA_1, self.TDS694_4))
+        print 'MSOA_2 vs TDS694_4, rho = {0:.3f}'.format(self.correlation(self.MSOA_2, self.TDS694_4))
+        print 'MSOA_3 vs TDS694_4, rho = {0:.3f}'.format(self.correlation(self.MSOA_3, self.TDS694_4))
+        print 'MSOA_4 vs TDS694_4, rho = {0:.3f}'.format(self.correlation(self.MSOA_4, self.TDS694_4))
+        print ''
+        print 'MSOB_1 vs TDS694_4, rho = {0:.3f}'.format(self.correlation(self.MSOB_1, self.TDS694_4))
+        print 'MSOB_2 vs TDS694_4, rho = {0:.3f}'.format(self.correlation(self.MSOB_2, self.TDS694_4))
+        print 'MSOB_3 vs TDS694_4, rho = {0:.3f}'.format(self.correlation(self.MSOB_3, self.TDS694_4))
+        print 'MSOB_4 vs TDS694_4, rho = {0:.3f}'.format(self.correlation(self.MSOB_4, self.TDS694_4))
+        print ''
+        print ''
+
+    def draw_sband_plots(self):
+        fig = mp.figure()
+        super_title = ''
+        if len(self.test_prefix) > 0:
+            super_title = 'Test '
+        super_title += 'Run ' + str(self.run)
+        mp.suptitle(super_title, fontsize = 24)
+        ax0 = fig.add_subplot(self.num_scopes,1,1)
+        l = min([len(self.TDS694_4), len(self.TDS694_1)])
+        ax0.scatter(self.TDS694_4[0:l], self.TDS694_1[0:l], label = '694_1', color='blue')
+        ax0.scatter(self.TDS694_4[0:l], self.TDS694_2[0:l], label = '694_2', color='red')
+        ax0.scatter(self.TDS694_4[0:l], self.TDS694_3[0:l], label = '694_3', color='green')
+        ax0.scatter(self.TDS694_4[0:l], self.TDS694_4[0:l], label = '694_4', color='black')
+        ax0.set_ylim([0, 128])
+        ax0.set_xlim([0, 128])
         title('Scope MSOA')
         xlabel('S-band (ADC counts)')
         ylabel('Seavey channels (ADC counts)')
         legend()
 
-        ax2 = fig.add_subplot(2,1,2)
-        l = min([len(self.sband), len(self.v2)])
-        ax2.scatter(self.sband[0:l], self.h2[0:l], label = 'h2', color='blue')
-        ax2.scatter(self.sband[0:l], self.v2[0:l], label = 'v2', color='red')
-        ax2.scatter(self.sband[0:l], self.h3[0:l], label = 'h3', color='green')
-        ax2.scatter(self.sband[0:l], self.v3[0:l], label = 'v3', color='black')
-        ax2.set_ylim([0, 128])
-        ax2.set_xlim([0, 128])
-        title('Scope MSOB')
-        xlabel('S-band (ADC counts)')
-        ylabel('Seavey channels (ADC counts)')
-        legend()
+        if self.num_scopes > 1:
+            ax1 = fig.add_subplot(self.num_scopes,1,2)
+            l = min([len(self.TDS694_4), len(self.MSOA_1)])
+            ax1.scatter(self.TDS694_4[0:l], self.MSOA_1[0:l], label = 'MSOA_1', color='blue')
+            ax1.scatter(self.TDS694_4[0:l], self.MSOA_2[0:l], label = 'MSOA_2', color='red')
+            ax1.scatter(self.TDS694_4[0:l], self.MSOA_3[0:l], label = 'MSOA_3', color='green')
+            ax1.scatter(self.TDS694_4[0:l], self.MSOA_4[0:l], label = 'MSOA_4', color='black')
+            ax1.set_ylim([0, 128])
+            ax1.set_xlim([0, 128])
+            title('Scope MSOA')
+            xlabel('S-band (ADC counts)')
+            ylabel('Seavey channels (ADC counts)')
+            legend()
+
+        if self.num_scopes == 3:
+            ax2 = fig.add_subplot(self.num_scopes,1,3)
+            l = min([len(self.TDS694_4), len(self.MSOB_2)])
+            ax2.scatter(self.TDS694_4[0:l], self.MSOB_1[0:l], label = 'MSOB_1', color='blue')
+            ax2.scatter(self.TDS694_4[0:l], self.MSOB_2[0:l], label = 'MSOB_2', color='red')
+            ax2.scatter(self.TDS694_4[0:l], self.MSOB_3[0:l], label = 'MSOB_3', color='green')
+            ax2.scatter(self.TDS694_4[0:l], self.MSOB_4[0:l], label = 'MSOB_4', color='black')
+            ax2.set_ylim([0, 128])
+            ax2.set_xlim([0, 128])
+            title('Scope MSOB')
+            xlabel('S-band (ADC counts)')
+            ylabel('Seavey channels (ADC counts)')
+            legend()
 
 if __name__ == "__main__":
     main()
