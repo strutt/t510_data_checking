@@ -6,12 +6,8 @@ import glob
 import sys
 import math
 
-def main():
+def main(run, test_prefix):
     dirc='/Users/benstrutt/Dropbox/data/'
-    test_prefix = ''
-    run = sys.argv[1]
-    if len(sys.argv) > 2:
-        test_prefix = 'test_'
 
     look_at_event = 0
     attr_list = ['XZE', 'XIN', 'NR_P', 'YMU', 'YOF']
@@ -31,40 +27,42 @@ def main():
 
     # Create my data objects from the specified file names.
     scopes = []
-    for file_name in file_names:
-        scopes.append( Scope(file_name) ) 
+    for i, file_name in enumerate(file_names):
+        scopes.append( Scope(file_name, scope_names[i]) )
 
-    # Start event viewer.
-    Event_Viewer(scopes, run, scope_names, test_prefix, attr_list) 
+    # Start event viewer if specified to
+    #Event_Viewer(scopes, run, scope_names, test_prefix, attr_list) 
 
     # Start time stamp viewer
-    t = Time_Stamp_Viewer(scopes, run, scope_names, test_prefix)
-    t.plot_time_stamps()
+    #t = Time_Stamp_Viewer(scopes, run, scope_names, test_prefix)
+    #t.plot_time_stamps()
 
     # Start peak correlator
-    p = Peak_Correlator(scopes, run, test_prefix)
-    #p.draw_694_plots()
-    p.draw_sband_plots() #max abs relative to sband
-    #p.draw_self_plots()
-    #p.draw_max_adc_plots()
-    show()
+    #p = Peak_Correlator(scopes, run, test_prefix)
+    #p.draw_max_adc_plots_scope()
+    #p.draw_max_adc_plots_event()
+    #show()
+
+    # So the data objects this script creates can be used in another python script, which calls this one.
+    return scopes
 
 class Scope:
     """
     This class contains all the events in a run for a particular scope, plus other useful information.
     """
-    def __init__(self, file_name):
-        self.file_names = []
+    def __init__(self, file_name, name):
+        self.file_name = file_name
+        self.name = name
         self.events = []
         self.raw_events = []
         self.event_times = []
         self.num_events = 0
-        self.get_data(file_name)
         self.event_index = 0
         self.lines  = []
 
+        self.get_data(file_name)
+
     def get_data(self, file_name):
-        self.file_names.append(file_name)
         for line in file(file_name):
             if line[0:5] == ';:WFM' or line[0:4] == ':WFM':
                 raw_event = line
@@ -84,6 +82,22 @@ class Scope:
             raw_event = self.raw_events[event_ind]
             self.events.append( Event(event_ind, raw_event, event_time) )
         print str(self.num_events) + ' found!'
+
+    def check_for_repeated_waveforms(self):
+        last_event = None
+        event_ind = 0
+        num_duplicates = 0
+        for event in self.events:
+            if last_event != None:
+                num_waves = min(event.num_waves, last_event.num_waves)
+                #print str(event_ind) + ' ' + str(num_waves)
+                for wave_ind in range(num_waves):
+                    if event.waves[wave_ind].samples == last_event.waves[wave_ind].samples:
+                        print "Duplicate waveforms in events " + str(event_ind-1) + " & " + str(event_ind) + " found in channel " + str(wave_ind+1) + "!"
+                        num_duplicates += 1
+            last_event = event
+            event_ind += 1
+        return num_duplicates
 
 class Event:
     """
@@ -226,7 +240,6 @@ class Event_Viewer:
         super_title += 'Run ' + str(run)
         mp.suptitle(super_title, fontsize = 24)
 
-        # Get data frim 
         for scope in self.scopes:
             if scope.num_events > self.max_events:
                 self.max_events = scope.num_events
@@ -421,10 +434,9 @@ class Time_Stamp_Viewer:
             for event in scope.events:
                 ts = event.time_stamp
                 ts2 = ts.split(':')
-                for tsi in ts2:
-                    hour = int(ts2[0])
-                    mins = int(ts2[1])
-                    secs = int(ts2[2])
+                hour = int(ts2[0])
+                mins = int(ts2[1])
+                secs = int(ts2[2])
                 time_secs = hour*3600 + mins*60 + secs
                 if len(event_times) == 0:
                     event_times.append(0)
@@ -580,7 +592,7 @@ class Peak_Correlator:
         return rho
 
 
-    def draw_max_adc_plots(self):
+    def draw_max_adc_plots_event(self):
         fig = mp.figure()
         super_title = ''
         if len(self.test_prefix) > 0:
@@ -589,11 +601,10 @@ class Peak_Correlator:
         mp.suptitle(super_title, fontsize = 24)
         if self.num_scopes > 0:
             ax1 = fig.add_subplot(self.num_scopes,1,1)
-            e = range( len( self.TDS694_1) )
-            ax1.scatter(e, self.TDS694_1, label = '694: 1', color='blue')
-            ax1.scatter(e, self.TDS694_2, label = '694: 2', color='red')
-            ax1.scatter(e, self.TDS694_3, label = '694: 3', color='green')
-            ax1.scatter(e, self.TDS694_4, label = '694: 4', color='black')
+            ax1.scatter(range(len(self.TDS694_1)), self.TDS694_1, label = '694: 1', color='blue')
+            ax1.scatter(range(len(self.TDS694_2)), self.TDS694_2, label = '694: 2', color='red')
+            ax1.scatter(range(len(self.TDS694_3)), self.TDS694_3, label = '694: 3', color='green')
+            ax1.scatter(range(len(self.TDS694_4)), self.TDS694_4, label = '694: 4', color='black')
             ax1.set_ylim([0, 128])
             title('Scope 694')
             xlabel('Event')
@@ -601,13 +612,10 @@ class Peak_Correlator:
             legend()
         if self.num_scopes > 1 :
             ax2 = fig.add_subplot(self.num_scopes,1,2)
-            e = range( len( self.MSOA_1) )
-            #print e
-            #print self.MSOA_1
-            ax2.scatter(e, self.MSOA_1, label = 'MSOA_1', color='blue')
-            ax2.scatter(e, self.MSOA_2, label = 'MSOA_2', color='red')
-            ax2.scatter(e, self.MSOB_3, label = 'MSOA_3', color='green')
-            ax2.scatter(e, self.MSOB_4, label = 'MSOA_4', color='black')
+            ax2.scatter(range(len(self.MSOA_1)), self.MSOA_1, label = 'MSOA_1', color='blue')
+            ax2.scatter(range(len(self.MSOA_2)), self.MSOA_2, label = 'MSOA_2', color='red')
+            ax2.scatter(range(len(self.MSOA_3)), self.MSOA_3, label = 'MSOA_3', color='green')
+            ax2.scatter(range(len(self.MSOA_4)), self.MSOA_4, label = 'MSOA_4', color='black')
             ax2.set_ylim([0, 128])
             title('Scope MSOA')
             xlabel('Event')
@@ -615,81 +623,111 @@ class Peak_Correlator:
             legend()
         if self.num_scopes > 2:
             ax3 = fig.add_subplot(self.num_scopes,1,3)
-            e = range( len( self.MSOB_1) )
-            ax3.scatter(e, self.MSOB_1, label = 'MSOB_1', color='blue')
-            ax3.scatter(e, self.MSOB_2, label = 'MSOB_2', color='red')
-            ax3.scatter(e, self.MSOB_3, label = 'MSOB_3', color='green')
-            ax3.scatter(e, self.MSOB_4, label = 'MSOB_4', color='black')
+            ax3.scatter(range(len(self.MSOB_1)), self.MSOB_1, label = 'MSOB_1', color='blue')
+            ax3.scatter(range(len(self.MSOB_2)), self.MSOB_2, label = 'MSOB_2', color='red')
+            ax3.scatter(range(len(self.MSOB_3)), self.MSOB_3, label = 'MSOB_3', color='green')
+            ax3.scatter(range(len(self.MSOB_4)), self.MSOB_4, label = 'MSOB_4', color='black')
             ax3.set_ylim([0, 128])
             title('Scope MSOB')
             xlabel('Event')
             ylabel('ADC counts')
             legend()
 
-        print 'TDS694_1 vs TDS694_4, rho = {0:.3f}'.format(self.correlation(self.TDS694_1, self.TDS694_4))
-        print 'TDS694_2 vs TDS694_4, rho = {0:.3f}'.format(self.correlation(self.TDS694_2, self.TDS694_4))
-        print 'TDS694_3 vs TDS694_4, rho = {0:.3f}'.format(self.correlation(self.TDS694_3, self.TDS694_4))
-        print 'TDS694_4 vs TDS694_4, rho = {0:.3f}'.format(self.correlation(self.TDS694_4, self.TDS694_4))
-        print ''
-        print 'MSOA_1 vs TDS694_4, rho = {0:.3f}'.format(self.correlation(self.MSOA_1, self.TDS694_4))
-        print 'MSOA_2 vs TDS694_4, rho = {0:.3f}'.format(self.correlation(self.MSOA_2, self.TDS694_4))
-        print 'MSOA_3 vs TDS694_4, rho = {0:.3f}'.format(self.correlation(self.MSOA_3, self.TDS694_4))
-        print 'MSOA_4 vs TDS694_4, rho = {0:.3f}'.format(self.correlation(self.MSOA_4, self.TDS694_4))
-        print ''
-        print 'MSOB_1 vs TDS694_4, rho = {0:.3f}'.format(self.correlation(self.MSOB_1, self.TDS694_4))
-        print 'MSOB_2 vs TDS694_4, rho = {0:.3f}'.format(self.correlation(self.MSOB_2, self.TDS694_4))
-        print 'MSOB_3 vs TDS694_4, rho = {0:.3f}'.format(self.correlation(self.MSOB_3, self.TDS694_4))
-        print 'MSOB_4 vs TDS694_4, rho = {0:.3f}'.format(self.correlation(self.MSOB_4, self.TDS694_4))
-        print ''
-        print ''
+        #print 'TDS694_1 vs TDS694_4, rho = {0:.3f}'.format(self.correlation(self.TDS694_1, self.TDS694_4))
+        #print 'TDS694_2 vs TDS694_4, rho = {0:.3f}'.format(self.correlation(self.TDS694_2, self.TDS694_4))
+        #print 'TDS694_3 vs TDS694_4, rho = {0:.3f}'.format(self.correlation(self.TDS694_3, self.TDS694_4))
+        #print 'TDS694_4 vs TDS694_4, rho = {0:.3f}'.format(self.correlation(self.TDS694_4, self.TDS694_4))
+        #print ''
+        #print 'MSOA_1 vs TDS694_4, rho = {0:.3f}'.format(self.correlation(self.MSOA_1, self.TDS694_4))
+        #print 'MSOA_2 vs TDS694_4, rho = {0:.3f}'.format(self.correlation(self.MSOA_2, self.TDS694_4))
+        #print 'MSOA_3 vs TDS694_4, rho = {0:.3f}'.format(self.correlation(self.MSOA_3, self.TDS694_4))
+        #print 'MSOA_4 vs TDS694_4, rho = {0:.3f}'.format(self.correlation(self.MSOA_4, self.TDS694_4))
+        #print ''
+        #print 'MSOB_1 vs TDS694_4, rho = {0:.3f}'.format(self.correlation(self.MSOB_1, self.TDS694_4))
+        #print 'MSOB_2 vs TDS694_4, rho = {0:.3f}'.format(self.correlation(self.MSOB_2, self.TDS694_4))
+        #print 'MSOB_3 vs TDS694_4, rho = {0:.3f}'.format(self.correlation(self.MSOB_3, self.TDS694_4))
+        #print 'MSOB_4 vs TDS694_4, rho = {0:.3f}'.format(self.correlation(self.MSOB_4, self.TDS694_4))
+        #print ''
+        #print ''
 
-    def draw_sband_plots(self):
+
+    def draw_max_adc_plots_scope(self):
         fig = mp.figure()
         super_title = ''
         if len(self.test_prefix) > 0:
             super_title = 'Test '
         super_title += 'Run ' + str(self.run)
         mp.suptitle(super_title, fontsize = 24)
-        ax0 = fig.add_subplot(self.num_scopes,1,1)
-        l = min([len(self.TDS694_4), len(self.TDS694_1)])
-        ax0.scatter(self.TDS694_4[0:l], self.TDS694_1[0:l], label = '694_1', color='blue')
-        ax0.scatter(self.TDS694_4[0:l], self.TDS694_2[0:l], label = '694_2', color='red')
-        ax0.scatter(self.TDS694_4[0:l], self.TDS694_3[0:l], label = '694_3', color='green')
-        ax0.scatter(self.TDS694_4[0:l], self.TDS694_4[0:l], label = '694_4', color='black')
-        ax0.set_ylim([0, 128])
-        ax0.set_xlim([0, 128])
-        title('Scope MSOA')
-        xlabel('S-band (ADC counts)')
-        ylabel('Seavey channels (ADC counts)')
-        legend()
-
-        if self.num_scopes > 1:
-            ax1 = fig.add_subplot(self.num_scopes,1,2)
-            l = min([len(self.TDS694_4), len(self.MSOA_1)])
-            ax1.scatter(self.TDS694_4[0:l], self.MSOA_1[0:l], label = 'MSOA_1', color='blue')
-            ax1.scatter(self.TDS694_4[0:l], self.MSOA_2[0:l], label = 'MSOA_2', color='red')
-            ax1.scatter(self.TDS694_4[0:l], self.MSOA_3[0:l], label = 'MSOA_3', color='green')
-            ax1.scatter(self.TDS694_4[0:l], self.MSOA_4[0:l], label = 'MSOA_4', color='black')
-            ax1.set_ylim([0, 128])
+        if self.num_scopes > 0:
+            ax1 = fig.add_subplot(self.num_scopes,1,1)
+            ax1.scatter(self.TDS694_4, self.TDS694_1, label = '694: 1', color='blue')
+            ax1.scatter(self.TDS694_4, self.TDS694_2, label = '694: 2', color='red')
+            ax1.scatter(self.TDS694_4, self.TDS694_3, label = '694: 3', color='green')
+            ax1.scatter(self.TDS694_4, self.TDS694_4, label = '694: 4', color='black')
             ax1.set_xlim([0, 128])
-            title('Scope MSOA')
-            xlabel('S-band (ADC counts)')
-            ylabel('Seavey channels (ADC counts)')
+            ax1.set_ylim([0, 128])
+            xlabel('TDS694_1 ADC counts')
+            ylabel('ADC counts')
             legend()
-
-        if self.num_scopes == 3:
-            ax2 = fig.add_subplot(self.num_scopes,1,3)
-            l = min([len(self.TDS694_4), len(self.MSOB_2)])
-            ax2.scatter(self.TDS694_4[0:l], self.MSOB_1[0:l], label = 'MSOB_1', color='blue')
-            ax2.scatter(self.TDS694_4[0:l], self.MSOB_2[0:l], label = 'MSOB_2', color='red')
-            ax2.scatter(self.TDS694_4[0:l], self.MSOB_3[0:l], label = 'MSOB_3', color='green')
-            ax2.scatter(self.TDS694_4[0:l], self.MSOB_4[0:l], label = 'MSOB_4', color='black')
-            ax2.set_ylim([0, 128])
+            #ax1b = fig.add_subplot(self.num_scopes,2,2)
+            #ax1b.scatter(self.TDS694_4, self.TDS694_1, label = '694: 1', color='blue')
+            #ax1b.scatter(self.TDS694_4, self.TDS694_2, label = '694: 2', color='red')
+            #ax1b.scatter(self.TDS694_4, self.TDS694_3, label = '694: 3', color='green')
+            #ax1b.scatter(self.TDS694_4, self.TDS694_4, label = '694: 4', color='black')
+            #ax1b.set_xlim([0, 128])
+            #ax1b.set_ylim([0, 128])
+            #title('Scope 694')
+            #xlabel('TDS694_1 ADC counts')
+            #ylabel('ADC counts')
+            #legend()
+        if self.num_scopes > 1 :
+            ax2 = fig.add_subplot(self.num_scopes,2,3)
+            ax2.scatter(self.MSOA_1, self.MSOA_1, label = 'MSOA_1', color='blue')
+            ax2.scatter(self.MSOA_1, self.MSOA_2, label = 'MSOA_2', color='red')
+            ax2.scatter(self.MSOA_1, self.MSOA_3, label = 'MSOA_3', color='green')
+            ax2.scatter(self.MSOA_1, self.MSOA_4, label = 'MSOA_4', color='black')
             ax2.set_xlim([0, 128])
-            title('Scope MSOB')
-            xlabel('S-band (ADC counts)')
-            ylabel('Seavey channels (ADC counts)')
+            ax2.set_ylim([0, 128])
+            xlabel('MSOA_1 ADC counts')
+            ylabel('ADC counts')
+            legend()
+            ax2b = fig.add_subplot(self.num_scopes,2,4)
+            l = min(len(self.TDS694_4), len(self.MSOA_1))
+            ax2b.scatter(self.TDS694_4[0:l], self.MSOA_1[0:l], label = 'MSOA_1', color='blue')
+            ax2b.scatter(self.TDS694_4[0:l], self.MSOA_2[0:l], label = 'MSOA_2', color='red')
+            ax2b.scatter(self.TDS694_4[0:l], self.MSOA_3[0:l], label = 'MSOA_3', color='green')
+            ax2b.scatter(self.TDS694_4[0:l], self.MSOA_4[0:l], label = 'MSOA_4', color='black')
+            ax2b.set_xlim([0, 128])
+            ax2b.set_ylim([0, 128])
+            xlabel('S-band ADC counts')
+            ylabel('ADC counts')
+            legend()
+        if self.num_scopes > 2:
+            l = min(len(self.TDS694_4), len(self.MSOB_1))
+            ax3 = fig.add_subplot(self.num_scopes,2,5)
+            ax3.scatter(self.MSOB_2, self.MSOB_1, label = 'MSOB_1', color='blue')
+            ax3.scatter(self.MSOB_2, self.MSOB_2, label = 'MSOB_2', color='red')
+            ax3.scatter(self.MSOB_2, self.MSOB_3, label = 'MSOB_3', color='green')
+            ax3.scatter(self.MSOB_2, self.MSOB_4, label = 'MSOB_4', color='black')
+            ax3.set_xlim([0, 128])
+            ax3.set_ylim([0, 128])
+            xlabel('MSOB_1 ADC counts')
+            ylabel('ADC counts')
+            legend()
+            ax3 = fig.add_subplot(self.num_scopes,2,6)
+            ax3.scatter(self.TDS694_4[0:l], self.MSOB_1[0:l], label = 'MSOB_1', color='blue')
+            ax3.scatter(self.TDS694_4[0:l], self.MSOB_2[0:l], label = 'MSOB_2', color='red')
+            ax3.scatter(self.TDS694_4[0:l], self.MSOB_3[0:l], label = 'MSOB_3', color='green')
+            ax3.scatter(self.TDS694_4[0:l], self.MSOB_4[0:l], label = 'MSOB_4', color='black')
+            ax3.set_xlim([0, 128])
+            ax3.set_ylim([0, 128])
+            xlabel('S-band ADC counts')
+            ylabel('ADC counts')
             legend()
 
 if __name__ == "__main__":
-    main()
+    test_prefix = ''
+    run = sys.argv[1]
+    if len(sys.argv) > 2:
+        test_prefix = 'test_'
+    main(run, test_prefix)
