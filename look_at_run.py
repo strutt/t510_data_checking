@@ -7,43 +7,55 @@ import sys
 import math
 
 def main(run, test_prefix):
+    """
+    Main function looks for filenames corresponding to scope and run.
+    Uses those files to construct Scope, Event and Wave objects.
+    These are then passed to Event_Viewer, which displays them.
+    Time_Stamp_Viewer displays event time stamp information, as one might infer from the name.
+    Peak_Correlator can display the peak value of each event, and might at some point do some other analysis.
+    """
+
     dirc='/Users/benstrutt/Dropbox/data/'
 
-    look_at_event = 0
+    # This list picks header information to display in Event_Viewer
+    # (It searches for the best matching string so should work with slight variations in header format)
     attr_list = ['XZE', 'XIN', 'NR_P', 'YMU', 'YOF']
 
+    # Name of the scopes as they appear in file names.
     scope_names = []
     scope_names.append('694')
     scope_names.append('MSOA')
     scope_names.append('MSOB')
 
+    # Actually search for the file.
     file_names = []
     for i in range(len(scope_names)):
         file_name = dirc
         file_name += test_prefix + 'run_' + str(run) + '_scope_' + scope_names[i] + '*.lvm'
+
         # If there are muliple files with the same run name, this selects the most recent one.
         # (The time the data was taken appears in the file name, so the most recent one will be last).
-        file_names.append(glob.glob(file_name)[-1])
+        if len(glob.glob(file_name)) > 0:
+            file_names.append(glob.glob(file_name)[-1])
 
     # Create my data objects from the specified file names.
     scopes = []
     for i, file_name in enumerate(file_names):
         scopes.append( Scope(file_name, scope_names[i]) )
 
-    # Start event viewer if specified to
-    #Event_Viewer(scopes, run, scope_names, test_prefix, attr_list) 
+    # Start event viewer
+    e = Event_Viewer(scopes, run, scope_names, test_prefix, attr_list)
 
     # Start time stamp viewer
-    #t = Time_Stamp_Viewer(scopes, run, scope_names, test_prefix)
-    #t.plot_time_stamps()
+    t = Time_Stamp_Viewer(scopes, run, scope_names, test_prefix)
+    t.plot_time_stamps()
 
     # Start peak correlator
-    #p = Peak_Correlator(scopes, run, test_prefix)
+    p = Peak_Correlator(scopes, run, test_prefix)
     #p.draw_max_adc_plots_scope()
-    #p.draw_max_adc_plots_event()
-    #show()
+    p.draw_max_adc_plots_event()
 
-    # So the data objects this script creates can be used in another python script, which calls this one.
+    # I'm calling this script to do other things so I need the things it makes.
     return scopes
 
 class Scope:
@@ -73,9 +85,11 @@ class Scope:
                 event_time = line.split('"')[1]
                 self.event_times.append(event_time)
 
+
+        #print self.event_times
         start_event = 0
-        if '694' in file_name:
-            start_event = 1 #discard first event if on 694 
+#        if '694' in file_name:
+#            start_event = 1 #discard first event if on 694 
         for event_ind in range( start_event, len( self.raw_events ) ):
             self.num_events += 1
             event_time = self.event_times[event_ind]
@@ -180,27 +194,27 @@ class Wave:
     def get_other(self):
 
         self.num_samples = len(self.samples_off)
-        x_0 = float(self.get_raw_attribute('XZE') ) # XZE is x0, the time of the initial sample.
+        self.x_0 = float(self.get_raw_attribute('XZ') ) # XZE is x0, the time of the initial sample.
         #x_0 = 0
-        x_incr = float( self.get_raw_attribute('XIN') )
+        self.x_incr = float( self.get_raw_attribute('XIN') )
         #x_incr = 1
-        self.samp_rate = 1./x_incr
+        self.samp_rate = 1./self.x_incr
 
-        y_off = float( self.get_raw_attribute('YOF') ) # YOF is the y-offset in volts on the scope.
+        self.y_off = float( self.get_raw_attribute('YOF') ) # YOF is the y-offset in volts on the scope.
         for sample in self.samples_off:
-            self.samples.append( float(sample) - y_off )
+            self.samples.append( float(sample) - self.y_off )
 
         for index in range(self.num_samples):
-            self.times.append((x_0 + index*x_incr)) # Populate the list of times.
+            self.times.append((self.x_0 + index*self.x_incr)) # Populate the list of times.
 
-        y_mult = float( self.get_raw_attribute('YMU') ) # YMU is the y-multiplier, i.e. volts/adc conversion.
+        self.y_mult = float( self.get_raw_attribute('YMU') ) # YMU is the y-multiplier, i.e. volts/adc conversion.
         
         # Here we populate a list of samples, both zeroed and offset so the user can switch between them
         # in the display.
         for samp in self.samples_off:
-            self.volts.append( (samp - y_off)*y_mult )
+            self.volts.append( (samp - self.y_off)*self.y_mult )
         for samp in self.samples_off:
-            self.volts_off.append( samp*y_mult)
+            self.volts_off.append( samp*self.y_mult)
 
     # This is a lookup function which means raw attributes can be picked out by their name.
     def get_raw_attribute(self, search_string):
@@ -224,7 +238,7 @@ class Event_Viewer:
         self.toggle_volts = False
         self.toggle_offset = False
         self.toggle_offset2 = False
-        self.toggle_delay = True
+        self.toggle_delay = False
         self.figs = []
         self.figs3 = []
         self.max_events = 0
@@ -275,9 +289,9 @@ class Event_Viewer:
         self.axnext = mp.axes([0, 0.95, 0.06, 0.05])
         self.axprev = mp.axes([0.06, 0.95, 0.06, 0.05])
         self.axvolt = mp.axes([0.12, 0.95, 0.06, 0.05])
-        self.axsoff = mp.axes([0.18, 0.95, 0.06, 0.05])
-        self.axdoff = mp.axes([0.24, 0.95, 0.06, 0.05])
-        self.axddel = mp.axes([0.3, 0.95, 0.06, 0.05])
+        self.axdoff = mp.axes([0.18, 0.95, 0.06, 0.05])
+        self.axddel = mp.axes([0.24, 0.95, 0.06, 0.05])
+        #self.axsoff = mp.axes([0.3, 0.95, 0.06, 0.05])
 
         self.bnext = Button(self.axnext, 'Next')
         self.bnext.on_clicked(self.next)
@@ -288,14 +302,15 @@ class Event_Viewer:
         self.bvolts = Button(self.axvolt, 'Volts/ADC')
         self.bvolts.on_clicked(self.volts_toggle)
             
-        self.bsoff = Button(self.axsoff, 'Scope Offset')
-        self.bsoff.on_clicked(self.offset_toggle)
-
         self.bdoff = Button(self.axdoff, 'Display Offset')
         self.bdoff.on_clicked(self.offset_toggle2)
 
         self.bddel = Button(self.axddel, 'Display Delay')
         self.bddel.on_clicked(self.delay_toggle)
+
+        #self.bsoff = Button(self.axsoff, 'Scope Offset')
+        #self.bsoff.on_clicked(self.offset_toggle)
+
         mp.show()
 
     def delay_toggle(self, event):
@@ -373,7 +388,7 @@ class Event_Viewer:
                     t1 = scope.events[self.event_ind].waves[wave_ind].times[1]
                     num_points = scope.events[self.event_ind].waves[wave_ind].num_samples
                     if self.toggle_delay == True:
-                        dt = 300*wave_ind*(t1 - t0)
+                        dt = 300*(wave_ind - 2)*(t1 - t0)
 
                     for t_ind in range(num_points):
                         t.append(scope.events[self.event_ind].waves[wave_ind].times[t_ind] + dt)
@@ -490,7 +505,7 @@ class Time_Stamp_Viewer:
         for scope_ind in range(len(self.scopes)):
             plot(range(len(self.dts2[scope_ind])) , self.dts2[scope_ind], label = self.scope_names[scope_ind], marker='o')
         legend()
-
+        show()
 
 
 class Peak_Correlator:
@@ -632,6 +647,7 @@ class Peak_Correlator:
             xlabel('Event')
             ylabel('ADC counts')
             legend()
+            show()
 
         #print 'TDS694_1 vs TDS694_4, rho = {0:.3f}'.format(self.correlation(self.TDS694_1, self.TDS694_4))
         #print 'TDS694_2 vs TDS694_4, rho = {0:.3f}'.format(self.correlation(self.TDS694_2, self.TDS694_4))
@@ -724,8 +740,13 @@ class Peak_Correlator:
             xlabel('S-band ADC counts')
             ylabel('ADC counts')
             legend()
+            show()
 
 if __name__ == "__main__":
+    if len(sys.argv) == 1:
+        print 'Usage: python look_at_run.py [run] [test]'
+        print '    Note: Will search for test file if any second argument is given.'
+        exit(-1)
     test_prefix = ''
     run = sys.argv[1]
     if len(sys.argv) > 2:

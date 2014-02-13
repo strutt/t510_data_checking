@@ -1,8 +1,8 @@
 import look_at_run
 import matplotlib.pyplot as mp
 
-
 def main():
+    scope_set = {'694', 'MSOA', 'MSOB'}
     TDS_duplicates = []
     MSOA_duplicates = []
     MSOB_duplicates = []
@@ -13,48 +13,52 @@ def main():
     MSOA_duplicates2 = []
     MSOB_duplicates2 = []
 
-    first_run = 258
-    last_run = 264
+    first_run = 221
+    last_run = 221
     runs = range(first_run, last_run+1)
-    test_prefix = 'test_'
+    test_prefix = ''
+    #test_prefix = 'test_'
     for run in runs:
         print '***********'
         print 'run ' + str(run)
         print '***********'
 
-        # There was no run 96
-        if run == 96:
-            TDS_duplicates.append(0)
-            TDS_duplicates2.append(0)
-            TDS_num_waves.append(0)
-
-            MSOA_duplicates.append(0)
-            MSOA_duplicates2.append(0)            
-            MSOA_num_waves.append(0)
-
-            MSOB_duplicates.append(0)
-            MSOB_duplicates2.append(0)
-            MSOB_num_waves.append(0)
-
-            continue
-
         scopes = look_at_run.main(run, test_prefix)
-        for scope_ind in range(len(scopes)):
+        if len(scopes) < 3:
+            these_scopes = [scope.name for scope in scopes]
+            temp_set = set(these_scopes)
+            missing_scopes = list(scope_set - temp_set)
+            print missing_scopes
+            for ms in missing_scopes:
+                if ms == '694':
+                    TDS_duplicates.append(0)
+                    TDS_duplicates2.append(0)
+                    TDS_num_waves.append(0)
+                elif ms == 'MSOA':
+                    MSOA_duplicates.append(0)
+                    MSOA_duplicates2.append(0)
+                    MSOA_num_waves.append(0)
+                elif ms == 'MSOB':
+                    MSOB_duplicates.append(0)
+                    MSOB_duplicates2.append(0)
+                    MSOB_num_waves.append(0)
+
+        for scope_ind, scope in enumerate(scopes):
             n = 0
             for event in scopes[scope_ind].events:
                 n += event.num_waves
             m = max(1, n)
 
-            if scope_ind == 0:
-                TDS_duplicates.append(scopes[scope_ind].check_for_repeated_waveforms())
+            if scope.name == '694':
+                TDS_duplicates.append(scope.check_for_repeated_waveforms())
                 TDS_duplicates2.append(float(TDS_duplicates[-1])/m)
                 TDS_num_waves.append(n)
-            elif scope_ind == 1:
-                MSOA_duplicates.append(scopes[scope_ind].check_for_repeated_waveforms())
+            elif scope.name == 'MSOA':
+                MSOA_duplicates.append(scope.check_for_repeated_waveforms())
                 MSOA_duplicates2.append(float(MSOA_duplicates[-1])/m)
                 MSOA_num_waves.append(n)
-            elif scope_ind == 2:
-                MSOB_duplicates.append(scopes[scope_ind].check_for_repeated_waveforms())
+            elif scope.name == 'MSOB':
+                MSOB_duplicates.append(scope.check_for_repeated_waveforms())
                 MSOB_duplicates2.append(float(MSOB_duplicates[-1])/m)
                 MSOB_num_waves.append(n)
 
