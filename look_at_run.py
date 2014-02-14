@@ -1,7 +1,7 @@
 from pylab import *
 import matplotlib.pyplot as mp
 from matplotlib.widgets import Button
-import numpy
+import numpy as np
 import glob
 import sys
 import math
@@ -47,13 +47,13 @@ def main(run, test_prefix):
     e = Event_Viewer(scopes, run, scope_names, test_prefix, attr_list)
 
     # Start time stamp viewer
-    t = Time_Stamp_Viewer(scopes, run, scope_names, test_prefix)
-    t.plot_time_stamps()
+    #t = Time_Stamp_Viewer(scopes, run, scope_names, test_prefix)
+    #t.plot_time_stamps()
 
     # Start peak correlator
-    p = Peak_Correlator(scopes, run, test_prefix)
-    #p.draw_max_adc_plots_scope()
-    p.draw_max_adc_plots_event()
+    #p = Peak_Correlator(scopes, run, test_prefix)
+    #p.draw_max_adc_plots_scope() # plots peak relative to scope channel and s-band
+    #p.draw_max_adc_plots_event()  # plots peak by event number
 
     # I'm calling this script to do other things so I need the things it makes.
     return scopes
@@ -161,6 +161,8 @@ class Wave:
         self.samples = []
         self.times = []
         self.volts_off = []
+        self.peak_val = 0
+        self.peak_time = 0
 
         # Get attributes from the raw waveform.
         attributes = raw_wave.split(';') # The Attributes are colon separated.
@@ -195,9 +197,9 @@ class Wave:
 
         self.num_samples = len(self.samples_off)
         self.x_0 = float(self.get_raw_attribute('XZ') ) # XZE is x0, the time of the initial sample.
-        #x_0 = 0
+        self.x_0 = 0
         self.x_incr = float( self.get_raw_attribute('XIN') )
-        #x_incr = 1
+        self.x_incr = 1
         self.samp_rate = 1./self.x_incr
 
         self.y_off = float( self.get_raw_attribute('YOF') ) # YOF is the y-offset in volts on the scope.
@@ -208,7 +210,14 @@ class Wave:
             self.times.append((self.x_0 + index*self.x_incr)) # Populate the list of times.
 
         self.y_mult = float( self.get_raw_attribute('YMU') ) # YMU is the y-multiplier, i.e. volts/adc conversion.
-        
+
+        # Can use this info to align waveforms
+        self.peak_val = max(self.samples)
+        m2 = min(self.samples)
+        if abs(m2) > self.peak_val:
+            self.peak_val = m2
+        self.peak_time = self.times[self.samples.index(self.peak_val)]
+            
         # Here we populate a list of samples, both zeroed and offset so the user can switch between them
         # in the display.
         for samp in self.samples_off:
@@ -239,6 +248,7 @@ class Event_Viewer:
         self.toggle_offset = False
         self.toggle_offset2 = False
         self.toggle_delay = False
+        self.toggle_align = False
         self.figs = []
         self.figs3 = []
         self.max_events = 0
@@ -291,7 +301,7 @@ class Event_Viewer:
         self.axvolt = mp.axes([0.12, 0.95, 0.06, 0.05])
         self.axdoff = mp.axes([0.18, 0.95, 0.06, 0.05])
         self.axddel = mp.axes([0.24, 0.95, 0.06, 0.05])
-        #self.axsoff = mp.axes([0.3, 0.95, 0.06, 0.05])
+        self.axalign = mp.axes([0.3, 0.95, 0.06, 0.05])
 
         self.bnext = Button(self.axnext, 'Next')
         self.bnext.on_clicked(self.next)
@@ -308,13 +318,19 @@ class Event_Viewer:
         self.bddel = Button(self.axddel, 'Display Delay')
         self.bddel.on_clicked(self.delay_toggle)
 
-        #self.bsoff = Button(self.axsoff, 'Scope Offset')
-        #self.bsoff.on_clicked(self.offset_toggle)
+        self.bsoff = Button(self.axalign, 'Align Peaks')
+        self.bsoff.on_clicked(self.align_toggle)
 
         mp.show()
 
+    def align_toggle(self, event):
+        self.toggle_delay = False
+        self.toggle_align = not self.toggle_align
+        self.update()
+
     def delay_toggle(self, event):
         self.toggle_delay = not self.toggle_delay
+        self.toggle_align = False
         self.update()
 
     def offset_toggle2(self, event):
@@ -359,7 +375,7 @@ class Event_Viewer:
             if self.event_ind < scope.num_events:
 
                 # each wave in the current scope, current event
-                for wave_ind in range ( len (self.scopes[scope_num].events[self.event_ind].waves) ):
+                for wave_ind, wave in enumerate(self.scopes[scope_num].events[self.event_ind].waves):
                     y = []
                     if self.toggle_volts == True:
                         if self.toggle_offset == True:
@@ -390,6 +406,26 @@ class Event_Viewer:
                     if self.toggle_delay == True:
                         dt = 300*(wave_ind - 2)*(t1 - t0)
 
+                    if self.toggle_align == True:
+                        # Simple way ... things are too shifted!
+                        #dt = scope.events[self.event_ind].waves[0].peak_time
+                        #dt -= scope.events[self.event_ind].waves[wave_ind].peak_time
+
+                        # Complicated way ... needed when no strong peak in HPOL (magnets off)
+                        w0 = array(scope.events[self.event_ind].waves[wave_ind - (wave_ind%2)].samples)
+                        w1 = array(scope.events[self.event_ind].waves[wave_ind].samples)
+                        cc = np.correlate(w0, w1, mode='Full')
+                        l = len(w0)
+                        # Restrict how far we allow things to be shifted
+                        max_displacement = 15
+                        p1 = max(list(cc)[l-max_displacement/2:l+max_displacement/2])
+                        p2 = min(list(cc)[l-max_displacement/2:l+max_displacement/2])
+                        if abs(p2) > p1:
+                            p1 = p2
+                        dt = (t1-t0)*(list(cc).index(p1) - l)
+                        #print dt
+                            
+
                     for t_ind in range(num_points):
                         t.append(scope.events[self.event_ind].waves[wave_ind].times[t_ind] + dt)
 
@@ -417,6 +453,7 @@ class Event_Viewer:
                     max_volts *= 1.1
 
                 y_lims = [ min_volts, max_volts ]
+
                 self.figs[scope_num].set_ylim( y_lims )
                 self.figs[scope_num].set_title(self.scope_names[scope_num] + ' Waveforms - Event ' + str(self.event_ind) + ': ' + scope.events[self.event_ind].time_stamp)
 
@@ -432,6 +469,45 @@ class Event_Viewer:
                 pass
             scope_num += 1
         mp.draw()
+
+    def cross_correlate(self, list1, list2):
+        """
+        Takes 2 waves and returns cross correlation
+        """
+        cc = []
+        l = len(list1)
+        for i in range(l):
+            cc.append(self.correlate(list1[i:], list2[:l-i], l))
+        for i in range(l-1):
+            cc.append(self.correlate(list1[:l-i], list2[i:], l))
+        return cc
+
+    def correlate(self, list1, list2, norm):
+        """
+        returns correlation of list
+        """
+        n = len(list1)
+
+        # assume len(list1) == len(list2)
+        # complain if they're not
+        if n != len(list2):
+            print [n, len(list2)]
+            print 'Error! Correlation lengths must be same value'
+            exit(-1)
+
+        # Won't work with only 1 element
+        if n == 1:
+            return 0
+        m1 = np.mean(list1)
+        m2 = np.mean(list2)
+        rms1 = math.sqrt(mean([l**2 for l in list1]) - m1**2)
+        rms2 = math.sqrt(mean([l**2 for l in list2]) - m2**2)
+        cor = sum([(l1-m1)*(l2-m2) for l1,l2 in zip(list1,list2)])
+        cor /= (norm*rms1*rms2)
+        return cor
+
+
+
 
 
 class Time_Stamp_Viewer:

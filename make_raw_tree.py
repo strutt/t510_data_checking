@@ -75,10 +75,10 @@ def main(run, test_prefix):
                 # Copy conversion info, some of this may be redundant, some more may be needed...
                 ns[k][0] = len(wave.samples)
                 
-                print scope.name
-                print 'event ' + str(j)
-                print 'wave ' + str(k)
-                print ns[k][0]
+                #print scope.name
+                #print 'event ' + str(j)
+                #print 'wave ' + str(k)
+                #print ns[k][0]
                 x_0[k] = wave.x_0
                 x_incr[k] = wave.x_incr
                 y_off[k] = wave.y_off
